@@ -1,0 +1,1398 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Virtual ATM Machine</title>
+<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Share+Tech+Mono&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+<style>
+  :root {
+    --atm-bezel: #0e0e18;
+    --screen-bg: #06120a;
+    --screen-green: #00ff88;
+    --accent-gold: #f0c040;
+    --accent-red: #ff3b5c;
+    --key-bg: #30304a;
+    --key-top: #3e3e5c;
+    --text-light: #d8d8e8;
+    --receipt-bg: #f5f0e0;
+    --slot-dark: #080810;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: #08080f;
+    font-family: 'Share Tech Mono', monospace;
+    overflow-x: hidden;
+    overflow-y: auto;
+    padding: 20px;
+  }
+
+  body::before {
+    content: '';
+    position: fixed;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background:
+      radial-gradient(ellipse at 40% 30%, rgba(0,255,136,0.025) 0%, transparent 50%),
+      radial-gradient(ellipse at 60% 70%, rgba(240,192,64,0.02) 0%, transparent 50%);
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  .atm-shell {
+    position: relative;
+    z-index: 1;
+    width: 520px;
+    max-width: 96vw;
+  }
+
+  .atm-top-strip {
+    height: 8px;
+    background: linear-gradient(90deg, var(--screen-green), var(--accent-gold), var(--screen-green));
+    border-radius: 20px 20px 0 0;
+    opacity: 0.6;
+  }
+
+  .atm-body {
+    background: linear-gradient(170deg, #2a2a40 0%, #1a1a2e 40%, #14142a 100%);
+    border-radius: 0 0 24px 24px;
+    padding: 24px 28px 28px;
+    box-shadow:
+      0 30px 80px rgba(0,0,0,0.8),
+      0 0 0 1px rgba(255,255,255,0.04),
+      inset 0 1px 0 rgba(255,255,255,0.06);
+    position: relative;
+  }
+
+  .atm-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 18px;
+    padding: 0 4px;
+  }
+
+  .brand-left { display: flex; align-items: center; gap: 10px; }
+
+  .brand-icon {
+    width: 36px; height: 36px;
+    background: linear-gradient(135deg, var(--screen-green), #00cc66);
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 16px;
+    color: #000;
+    box-shadow: 0 0 15px rgba(0,255,136,0.25);
+  }
+
+  .brand-name {
+    font-family: 'Orbitron', sans-serif;
+    font-weight: 900;
+    font-size: 20px;
+    color: #fff;
+    letter-spacing: 3px;
+  }
+
+  .brand-sub { font-size: 9px; color: rgba(255,255,255,0.3); letter-spacing: 2px; }
+
+  .brand-right { display: flex; align-items: center; gap: 6px; }
+
+  .status-dot {
+    width: 7px; height: 7px;
+    background: var(--screen-green);
+    border-radius: 50%;
+    box-shadow: 0 0 8px rgba(0,255,136,0.6);
+    animation: status-blink 3s ease-in-out infinite;
+  }
+
+  @keyframes status-blink {
+    0%, 80%, 100% { opacity: 1; }
+    90% { opacity: 0.3; }
+  }
+
+  .status-text { font-size: 9px; color: rgba(0,255,136,0.6); letter-spacing: 1px; }
+
+  /* ==================== SCREEN ==================== */
+  .screen-bezel {
+    background: var(--atm-bezel);
+    border-radius: 14px;
+    padding: 5px;
+    box-shadow: inset 0 3px 10px rgba(0,0,0,0.8), 0 1px 0 rgba(255,255,255,0.04);
+    margin-bottom: 16px;
+    position: relative;
+  }
+
+  .screen-bezel::after {
+    content: '';
+    position: absolute;
+    top: 5px; left: 5px; right: 5px;
+    height: 30%;
+    background: linear-gradient(180deg, rgba(255,255,255,0.02) 0%, transparent 100%);
+    border-radius: 10px 10px 0 0;
+    pointer-events: none;
+    z-index: 15;
+  }
+
+  .screen {
+    background: var(--screen-bg);
+    border-radius: 10px;
+    height: 320px;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .screen::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background: repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0,0,0,0.06) 2px, rgba(0,0,0,0.06) 4px);
+    pointer-events: none;
+    z-index: 12;
+  }
+
+  .screen::after {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 3px;
+    background: linear-gradient(90deg, transparent, rgba(0,255,136,0.06), transparent);
+    animation: scanline-move 4s linear infinite;
+    pointer-events: none;
+    z-index: 13;
+  }
+
+  @keyframes scanline-move { 0% { top: -3px; } 100% { top: 100%; } }
+
+  .screen-state {
+    position: absolute;
+    top: 0; left: 0; right: 0; bottom: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+    opacity: 0;
+    transform: scale(0.97);
+    transition: opacity 0.35s ease, transform 0.35s ease;
+    pointer-events: none;
+    z-index: 10;
+  }
+
+  .screen-state.active {
+    opacity: 1;
+    transform: scale(1);
+    pointer-events: all;
+  }
+
+  /* ==================== HARDWARE ==================== */
+  .hardware-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    margin-bottom: 16px;
+  }
+
+  .card-reader { width: 200px; position: relative; }
+
+  .card-reader-label {
+    font-size: 8px;
+    color: rgba(255,255,255,0.2);
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    margin-bottom: 6px;
+    text-align: center;
+  }
+
+  .card-slot {
+    width: 100%;
+    height: 44px;
+    background: var(--slot-dark);
+    border-radius: 22px;
+    border: 1px solid rgba(255,255,255,0.04);
+    position: relative;
+    overflow: hidden;
+    cursor: pointer;
+    transition: border-color 0.3s, box-shadow 0.3s;
+  }
+
+  .card-slot:hover {
+    border-color: rgba(0,255,136,0.2);
+    box-shadow: 0 0 15px rgba(0,255,136,0.06);
+  }
+
+  .card-slot.has-card { border-color: rgba(0,255,136,0.3); }
+
+  .slot-inner {
+    position: absolute;
+    top: 4px; left: 20px; right: 20px; bottom: 4px;
+    background: rgba(0,0,0,0.4);
+    border-radius: 18px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+  }
+
+  .slot-arrow { color: rgba(255,255,255,0.15); font-size: 10px; }
+  .slot-text { font-size: 9px; color: rgba(255,255,255,0.18); letter-spacing: 1px; }
+
+  .bank-card {
+    position: absolute;
+    top: 3px;
+    left: -210px;
+    width: 196px;
+    height: 38px;
+    border-radius: 6px;
+    background: linear-gradient(135deg, #d4a030 0%, #c89020 40%, #b88018 100%);
+    display: flex;
+    align-items: center;
+    padding: 0 14px;
+    gap: 10px;
+    z-index: 5;
+    transition: left 0.9s cubic-bezier(0.22, 0.61, 0.36, 1);
+    box-shadow: 0 2px 10px rgba(0,0,0,0.4);
+  }
+
+  .bank-card.inserted { left: 3px; }
+  .bank-card.ejected { left: -210px; }
+
+  .card-chip {
+    width: 22px; height: 17px;
+    background: linear-gradient(135deg, #e6c050, #c8a030);
+    border-radius: 3px;
+    border: 1px solid rgba(255,255,255,0.25);
+    position: relative;
+  }
+
+  .card-chip::after {
+    content: '';
+    position: absolute;
+    top: 3px; left: 3px; right: 3px; bottom: 3px;
+    border: 1px solid rgba(0,0,0,0.15);
+    border-radius: 1px;
+  }
+
+  .card-stripes { display: flex; flex-direction: column; gap: 3px; flex: 1; }
+  .card-stripes span { height: 2px; background: rgba(0,0,0,0.12); border-radius: 1px; }
+
+  .card-brand {
+    font-family: 'Orbitron', sans-serif;
+    font-size: 7px;
+    font-weight: 700;
+    color: rgba(0,0,0,0.5);
+    letter-spacing: 1px;
+  }
+
+  /* FIX: Use visibility+opacity instead of display:none to avoid transition:all conflict */
+  .insert-card-btn {
+    flex: 1;
+    height: 56px;
+    background: linear-gradient(180deg, rgba(0,255,136,0.1) 0%, rgba(0,255,136,0.04) 100%);
+    border: 1px solid rgba(0,255,136,0.2);
+    border-radius: 12px;
+    color: var(--screen-green);
+    font-family: 'Orbitron', sans-serif;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 2px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    /* FIX: Explicit properties instead of 'all' — avoids display transition bug */
+    transition: background 0.25s ease, border-color 0.25s ease, box-shadow 0.25s ease, transform 0.25s ease, opacity 0.25s ease, visibility 0.25s ease;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .insert-card-btn::before {
+    content: '';
+    position: absolute;
+    top: 0; left: -100%; right: 0; bottom: 0;
+    width: 200%;
+    background: linear-gradient(90deg, transparent, rgba(0,255,136,0.08), transparent);
+    animation: btn-shimmer 3s ease-in-out infinite;
+    pointer-events: none;
+  }
+
+  @keyframes btn-shimmer { 0% { transform: translateX(-50%); } 100% { transform: translateX(50%); } }
+
+  .insert-card-btn:hover {
+    background: linear-gradient(180deg, rgba(0,255,136,0.18) 0%, rgba(0,255,136,0.08) 100%);
+    border-color: rgba(0,255,136,0.4);
+    box-shadow: 0 0 25px rgba(0,255,136,0.12);
+    transform: translateY(-1px);
+  }
+
+  .insert-card-btn:active { transform: scale(0.98); }
+
+  /* FIX: visibility+opacity instead of display:none */
+  .insert-card-btn.hidden {
+    visibility: hidden;
+    opacity: 0;
+    pointer-events: none;
+  }
+
+  .insert-card-btn i { font-size: 18px; position: relative; z-index: 1; }
+  .insert-card-btn span { position: relative; z-index: 1; }
+
+  /* ==================== CASH DISPENSER ==================== */
+  .cash-dispenser-area { margin-bottom: 16px; }
+
+  .dispenser-label {
+    font-size: 8px;
+    color: rgba(255,255,255,0.15);
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    margin-bottom: 5px;
+    text-align: center;
+  }
+
+  .dispenser-slot {
+    width: 240px;
+    height: 12px;
+    margin: 0 auto;
+    background: var(--slot-dark);
+    border-radius: 6px;
+    border: 1px solid rgba(255,255,255,0.03);
+    position: relative;
+    overflow: visible;
+  }
+
+  .dispenser-slot::after {
+    content: '';
+    position: absolute;
+    top: 2px; left: 15px; right: 15px; bottom: 2px;
+    background: rgba(0,0,0,0.5);
+    border-radius: 4px;
+  }
+
+  .cash-out-area {
+    position: absolute;
+    bottom: 16px;
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 2px;
+    z-index: 20;
+    pointer-events: none;
+  }
+
+  .cash-note {
+    width: 130px;
+    height: 54px;
+    border-radius: 5px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: 'Orbitron', sans-serif;
+    font-size: 14px;
+    font-weight: 700;
+    color: rgba(255,255,255,0.9);
+    opacity: 0;
+    position: relative;
+    box-shadow: 0 3px 12px rgba(0,0,0,0.4);
+  }
+
+  .cash-note.note-2000 { background: linear-gradient(135deg, #e85d3a, #d04a28); }
+  .cash-note.note-500 { background: linear-gradient(135deg, #4a9e4a, #357a35); }
+  .cash-note.note-200 { background: linear-gradient(135deg, #e8a830, #d09020); }
+  .cash-note.note-100 { background: linear-gradient(135deg, #3a7ab8, #2a60a0); }
+  .cash-note.note-50 { background: linear-gradient(135deg, #b060b0, #904890); }
+
+  .cash-note.dispensing { animation: note-dispense 0.5s ease-out forwards; }
+
+  @keyframes note-dispense {
+    0% { transform: translateY(30px) scaleY(0.6); opacity: 0; }
+    60% { transform: translateY(-5px) scaleY(1.05); opacity: 1; }
+    100% { transform: translateY(0) scaleY(1); opacity: 1; }
+  }
+
+  /* ==================== KEYPAD ==================== */
+  .keypad-area { display: flex; flex-direction: column; align-items: center; gap: 8px; }
+
+  .keypad-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 7px;
+    width: 100%;
+    max-width: 320px;
+  }
+
+  .key {
+    height: 50px;
+    border-radius: 10px;
+    font-family: 'Orbitron', sans-serif;
+    font-size: 18px;
+    font-weight: 700;
+    color: var(--text-light);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    user-select: none;
+    -webkit-tap-highlight-color: transparent;
+    border: none;
+    background: linear-gradient(180deg, var(--key-top) 0%, var(--key-bg) 100%);
+    box-shadow: 0 4px 0 #1a1a2e, 0 6px 12px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.08);
+    transition: transform 0.1s ease, background 0.1s ease, box-shadow 0.1s ease;
+  }
+
+  .key:hover {
+    background: linear-gradient(180deg, #4a4a68 0%, #38385a 100%);
+    box-shadow: 0 4px 0 #1a1a2e, 0 6px 12px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.12);
+  }
+
+  .key:active {
+    transform: translateY(3px);
+    box-shadow: 0 1px 0 #1a1a2e, 0 2px 4px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.05);
+    background: linear-gradient(180deg, var(--key-bg) 0%, #28284a 100%);
+  }
+
+  .key.key-clear { font-size: 10px; color: var(--accent-red); letter-spacing: 1px; }
+
+  .key.key-enter {
+    background: linear-gradient(180deg, rgba(0,255,136,0.2) 0%, rgba(0,255,136,0.08) 100%);
+    color: var(--screen-green);
+    box-shadow: 0 4px 0 #0a2a1a, 0 6px 12px rgba(0,0,0,0.4), inset 0 1px 0 rgba(0,255,136,0.15);
+  }
+
+  .key.key-enter:hover { background: linear-gradient(180deg, rgba(0,255,136,0.3) 0%, rgba(0,255,136,0.12) 100%); }
+
+  .key.key-enter:active {
+    box-shadow: 0 1px 0 #0a2a1a, 0 2px 4px rgba(0,0,0,0.4), inset 0 1px 0 rgba(0,255,136,0.1);
+    background: linear-gradient(180deg, rgba(0,255,136,0.12) 0%, rgba(0,255,136,0.06) 100%);
+  }
+
+  .side-keys { display: flex; gap: 8px; width: 100%; max-width: 320px; }
+
+  .side-key {
+    flex: 1;
+    height: 36px;
+    background: linear-gradient(180deg, rgba(255,255,255,0.05) 0%, rgba(255,255,255,0.02) 100%);
+    border: 1px solid rgba(255,255,255,0.06);
+    border-radius: 8px;
+    color: rgba(255,255,255,0.3);
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 10px;
+    letter-spacing: 1px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    transition: transform 0.12s ease, color 0.12s ease, background 0.12s ease;
+    box-shadow: 0 2px 0 rgba(0,0,0,0.3);
+  }
+
+  .side-key:hover { color: rgba(255,255,255,0.6); background: linear-gradient(180deg, rgba(255,255,255,0.08) 0%, rgba(255,255,255,0.03) 100%); }
+  .side-key:active { transform: translateY(2px); box-shadow: 0 0 0 rgba(0,0,0,0.3); }
+
+  /* ==================== SCREEN CONTENT ==================== */
+  .welcome-icon { font-size: 44px; color: rgba(0,255,136,0.3); margin-bottom: 14px; }
+
+  .welcome-title {
+    font-family: 'Orbitron', sans-serif;
+    font-size: 20px;
+    color: var(--screen-green);
+    text-shadow: 0 0 20px rgba(0,255,136,0.25);
+    margin-bottom: 6px;
+  }
+
+  .welcome-hint { color: rgba(0,255,136,0.4); font-size: 11px; animation: blink-slow 2s ease-in-out infinite; }
+
+  @keyframes blink-slow { 0%, 100% { opacity: 1; } 50% { opacity: 0.25; } }
+
+  .pin-title { color: var(--screen-green); font-size: 13px; margin-bottom: 22px; letter-spacing: 1px; }
+  .pin-dots { display: flex; gap: 18px; margin-bottom: 20px; }
+
+  .pin-dot {
+    width: 20px; height: 20px;
+    border: 2px solid rgba(0,255,136,0.3);
+    border-radius: 50%;
+    transition: all 0.2s ease;
+  }
+
+  .pin-dot.filled {
+    background: var(--screen-green);
+    border-color: var(--screen-green);
+    box-shadow: 0 0 12px rgba(0,255,136,0.5);
+  }
+
+  .pin-msg { font-size: 11px; min-height: 16px; text-shadow: 0 0 8px currentColor; }
+  .pin-msg.error { color: var(--accent-red); }
+  .pin-msg.success { color: var(--screen-green); }
+
+  .menu-head { font-family: 'Orbitron', sans-serif; font-size: 15px; color: var(--screen-green); margin-bottom: 4px; text-shadow: 0 0 12px rgba(0,255,136,0.2); }
+  .menu-bal-line { color: var(--accent-gold); font-size: 11px; margin-bottom: 16px; opacity: 0.75; }
+
+  .menu-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; width: 100%; max-width: 310px; }
+
+  .menu-item {
+    background: rgba(0,255,136,0.04);
+    border: 1px solid rgba(0,255,136,0.1);
+    border-radius: 10px;
+    padding: 14px 8px;
+    cursor: pointer;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 7px;
+    color: var(--screen-green);
+    transition: all 0.2s ease;
+  }
+
+  .menu-item:hover { background: rgba(0,255,136,0.1); border-color: rgba(0,255,136,0.3); transform: translateY(-2px); box-shadow: 0 4px 16px rgba(0,255,136,0.08); }
+  .menu-item:active { transform: translateY(0); }
+  .menu-item i { font-size: 20px; }
+  .menu-item span { font-size: 10px; letter-spacing: 0.5px; }
+
+  .menu-item.danger { border-color: rgba(255,59,92,0.15); color: var(--accent-red); background: rgba(255,59,92,0.03); }
+  .menu-item.danger:hover { background: rgba(255,59,92,0.08); border-color: rgba(255,59,92,0.3); box-shadow: 0 4px 16px rgba(255,59,92,0.06); }
+
+  .amt-title { font-family: 'Orbitron', sans-serif; font-size: 13px; color: var(--screen-green); margin-bottom: 14px; text-shadow: 0 0 10px rgba(0,255,136,0.2); }
+  .amt-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; width: 100%; max-width: 290px; margin-bottom: 10px; }
+
+  .amt-btn {
+    background: rgba(0,255,136,0.04);
+    border: 1px solid rgba(0,255,136,0.1);
+    border-radius: 7px;
+    padding: 10px;
+    cursor: pointer;
+    color: var(--text-light);
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 13px;
+    text-align: center;
+    transition: all 0.2s ease;
+  }
+
+  .amt-btn:hover { background: rgba(0,255,136,0.1); border-color: rgba(0,255,136,0.25); }
+
+  .amt-btn.picked {
+    background: rgba(0,255,136,0.14);
+    border-color: var(--screen-green);
+    color: var(--screen-green);
+    box-shadow: 0 0 12px rgba(0,255,136,0.12);
+  }
+
+  .custom-input-row { width: 100%; max-width: 290px; display: flex; align-items: center; gap: 8px; margin-bottom: 12px; }
+  .custom-input-row .rupee { color: rgba(0,255,136,0.35); font-size: 16px; }
+
+  .custom-input-row input {
+    flex: 1;
+    background: rgba(0,255,136,0.04);
+    border: 1px solid rgba(0,255,136,0.12);
+    border-radius: 7px;
+    padding: 9px 12px;
+    color: var(--screen-green);
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 15px;
+    outline: none;
+    transition: border-color 0.2s, box-shadow 0.2s;
+  }
+
+  .custom-input-row input:focus { border-color: var(--screen-green); box-shadow: 0 0 8px rgba(0,255,136,0.08); }
+  .custom-input-row input::placeholder { color: rgba(0,255,136,0.2); }
+
+  .scr-btns { display: flex; gap: 8px; }
+
+  .scr-btn {
+    padding: 9px 22px;
+    border-radius: 7px;
+    cursor: pointer;
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 11px;
+    letter-spacing: 1px;
+    border: 1px solid;
+    transition: all 0.2s ease;
+  }
+
+  .scr-btn.green { background: rgba(0,255,136,0.1); border-color: rgba(0,255,136,0.25); color: var(--screen-green); }
+  .scr-btn.green:hover { background: rgba(0,255,136,0.18); box-shadow: 0 0 12px rgba(0,255,136,0.1); }
+  .scr-btn.ghost { background: transparent; border-color: rgba(255,255,255,0.08); color: rgba(255,255,255,0.35); }
+  .scr-btn.ghost:hover { border-color: rgba(255,255,255,0.2); color: rgba(255,255,255,0.6); }
+
+  .cfm-icon { font-size: 36px; color: var(--accent-gold); margin-bottom: 10px; }
+
+  .cfm-amount {
+    font-family: 'Orbitron', sans-serif;
+    font-size: 30px;
+    color: var(--accent-gold);
+    text-shadow: 0 0 20px rgba(240,192,64,0.25);
+    margin-bottom: 3px;
+  }
+
+  .cfm-label { color: rgba(255,255,255,0.3); font-size: 10px; margin-bottom: 16px; letter-spacing: 1px; }
+  .cfm-table { width: 100%; max-width: 250px; margin-bottom: 16px; }
+
+  .cfm-row { display: flex; justify-content: space-between; padding: 7px 0; border-bottom: 1px solid rgba(255,255,255,0.03); font-size: 11px; }
+  .cfm-row .k { color: rgba(255,255,255,0.3); }
+  .cfm-row .v { color: var(--text-light); }
+
+  .proc-ring { width: 56px; height: 56px; border: 3px solid rgba(0,255,136,0.08); border-top-color: var(--screen-green); border-radius: 50%; animation: ring-spin 0.7s linear infinite; margin-bottom: 18px; }
+  @keyframes ring-spin { to { transform: rotate(360deg); } }
+  .proc-text { color: var(--screen-green); font-size: 13px; animation: blink-slow 1s ease-in-out infinite; }
+
+  .suc-icon { font-size: 46px; color: var(--screen-green); margin-bottom: 10px; animation: pop-in 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275); }
+  @keyframes pop-in { 0% { transform: scale(0); } 100% { transform: scale(1); } }
+
+  .suc-title { font-family: 'Orbitron', sans-serif; font-size: 14px; color: var(--screen-green); margin-bottom: 3px; }
+
+  .suc-amount {
+    font-family: 'Orbitron', sans-serif;
+    font-size: 26px;
+    color: var(--accent-gold);
+    text-shadow: 0 0 18px rgba(240,192,64,0.25);
+    margin-bottom: 10px;
+  }
+
+  .suc-notes { min-height: 50px; display: flex; flex-direction: column; align-items: center; gap: 3px; margin-bottom: 10px; }
+  .suc-hint { color: rgba(255,255,255,0.3); font-size: 10px; margin-bottom: 12px; }
+
+  .bal-icon { font-size: 40px; color: var(--accent-gold); margin-bottom: 10px; }
+  .bal-label { color: rgba(255,255,255,0.35); font-size: 11px; margin-bottom: 5px; }
+
+  .bal-value {
+    font-family: 'Orbitron', sans-serif;
+    font-size: 28px;
+    color: var(--accent-gold);
+    text-shadow: 0 0 18px rgba(240,192,64,0.25);
+    margin-bottom: 5px;
+  }
+
+  .bal-acct { color: rgba(255,255,255,0.25); font-size: 10px; margin-bottom: 18px; }
+
+  .stmt-head { font-family: 'Orbitron', sans-serif; font-size: 12px; color: var(--screen-green); margin-bottom: 10px; text-shadow: 0 0 8px rgba(0,255,136,0.2); }
+
+  .stmt-list { width: 100%; max-width: 270px; max-height: 175px; overflow-y: auto; scrollbar-width: thin; scrollbar-color: rgba(0,255,136,0.15) transparent; }
+  .stmt-list::-webkit-scrollbar { width: 3px; }
+  .stmt-list::-webkit-scrollbar-thumb { background: rgba(0,255,136,0.15); border-radius: 2px; }
+
+  .stmt-row { display: flex; justify-content: space-between; align-items: center; padding: 5px 0; border-bottom: 1px solid rgba(255,255,255,0.025); font-size: 10px; }
+  .stmt-row .s-desc { color: rgba(255,255,255,0.35); }
+  .stmt-row .s-date { color: rgba(255,255,255,0.18); font-size: 8px; }
+  .stmt-row .s-amt { color: var(--accent-red); font-weight: bold; }
+  .stmt-row .s-amt.cr { color: var(--screen-green); }
+
+  .stmt-row .s-tag { font-size: 7px; padding: 1px 4px; border-radius: 3px; margin-left: 6px; letter-spacing: 0.5px; font-weight: bold; }
+  .stmt-row .s-tag.dr { background: rgba(255,59,92,0.12); color: var(--accent-red); }
+  .stmt-row .s-tag.cr-tag { background: rgba(0,255,136,0.1); color: var(--screen-green); }
+
+  /* ==================== RECEIPT ==================== */
+  .receipt {
+    background: var(--receipt-bg);
+    color: #1a1a1a;
+    border-radius: 5px;
+    padding: 14px;
+    width: 210px;
+    font-size: 9px;
+    position: relative;
+    animation: print-out 0.5s ease-out;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.5);
+  }
+
+  @keyframes print-out { 0% { max-height: 0; padding: 0 14px; opacity: 0; } 100% { max-height: 400px; padding: 14px; opacity: 1; } }
+
+  .receipt::before, .receipt::after {
+    content: '';
+    position: absolute;
+    left: 0; right: 0;
+    height: 5px;
+    background: linear-gradient(135deg, transparent 33.33%, #aaa 33.33%, #aaa 66.66%, transparent 66.66%);
+    background-size: 7px 5px;
+  }
+
+  .receipt::before { top: -5px; }
+  .receipt::after { bottom: -5px; }
+
+  .rcpt-head { text-align: center; padding-bottom: 6px; border-bottom: 1px dashed #aaa; margin-bottom: 6px; }
+  .rcpt-head .rn { font-family: 'Orbitron', sans-serif; font-size: 10px; font-weight: 700; letter-spacing: 2px; }
+  .rcpt-head .rb { color: #666; margin-top: 2px; }
+
+  .rcpt-row { display: flex; justify-content: space-between; padding: 2px 0; }
+  .rcpt-row .rl { color: #666; }
+  .rcpt-row .rv { font-weight: 700; }
+  .rcpt-hr { border: none; border-top: 1px dashed #aaa; margin: 6px 0; }
+  .rcpt-total .rv { color: #006633; font-size: 12px; }
+
+  .rcpt-foot { text-align: center; color: #999; margin-top: 6px; padding-top: 6px; border-top: 1px dashed #aaa; font-size: 8px; line-height: 1.5; }
+
+  .exit-icon { font-size: 42px; color: var(--accent-gold); margin-bottom: 10px; animation: pop-in 0.4s ease; }
+  .exit-title { font-family: 'Orbitron', sans-serif; font-size: 16px; color: var(--accent-gold); margin-bottom: 4px; }
+  .exit-sub { color: rgba(240,192,64,0.45); font-size: 11px; margin-bottom: 18px; }
+
+  .err-icon { font-size: 42px; color: var(--accent-red); margin-bottom: 10px; }
+  .err-text { font-family: 'Orbitron', sans-serif; font-size: 13px; color: var(--accent-red); text-shadow: 0 0 10px rgba(255,59,92,0.3); }
+
+  .reading-text { font-family: 'Orbitron', sans-serif; font-size: 13px; color: var(--screen-green); margin-bottom: 12px; }
+  .reading-bar { width: 160px; height: 4px; background: rgba(0,255,136,0.1); border-radius: 2px; overflow: hidden; }
+  .reading-bar-fill { height: 100%; width: 0%; background: var(--screen-green); border-radius: 2px; box-shadow: 0 0 8px rgba(0,255,136,0.4); }
+
+  .reading-bar-fill.filling { transition: width 1.2s ease-in-out; }
+  .reading-bar-fill.instant { transition: none; }
+
+  .particles { position: fixed; top: 0; left: 0; right: 0; bottom: 0; pointer-events: none; z-index: 0; overflow: hidden; }
+  .dot { position: absolute; border-radius: 50%; animation: rise linear infinite; opacity: 0; }
+  @keyframes rise { 0% { transform: translateY(100vh) scale(0); opacity: 0; } 8% { opacity: 1; } 88% { opacity: 0.6; } 100% { transform: translateY(-5vh) scale(1); opacity: 0; } }
+
+  @media (max-width: 540px) {
+    .atm-body { padding: 16px; }
+    .screen { height: 280px; }
+    .key { height: 44px; font-size: 16px; }
+    .hardware-row { flex-direction: column; }
+    .insert-card-btn { height: 48px; font-size: 10px; }
+    .cfm-amount { font-size: 24px; }
+    .bal-value { font-size: 22px; }
+    .suc-amount { font-size: 22px; }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
+  }
+</style>
+</head>
+<body>
+
+<div class="particles" id="particles"></div>
+
+<div class="atm-shell">
+  <div class="atm-top-strip"></div>
+  <div class="atm-body">
+
+    <div class="atm-header">
+      <div class="brand-left">
+        <div class="brand-icon"><i class="fas fa-landmark"></i></div>
+        <div>
+          <div class="brand-name">NEXUS</div>
+          <div class="brand-sub">INTERNATIONAL BANK</div>
+        </div>
+      </div>
+      <div class="brand-right">
+        <div class="status-dot"></div>
+        <div class="status-text">ONLINE</div>
+      </div>
+    </div>
+
+    <div class="screen-bezel">
+      <div class="screen" id="screen">
+        <div class="screen-state active" id="st-welcome">
+          <div class="welcome-icon"><i class="fas fa-credit-card"></i></div>
+          <div class="welcome-title">NEXUS ATM</div>
+          <div class="welcome-hint">Insert your card to begin</div>
+        </div>
+
+        <div class="screen-state" id="st-reading">
+          <div class="reading-text">Reading Card...</div>
+          <div class="reading-bar"><div class="reading-bar-fill" id="read-bar"></div></div>
+        </div>
+
+        <div class="screen-state" id="st-pin">
+          <div class="pin-title">ENTER YOUR PIN</div>
+          <div class="pin-dots" id="pin-dots">
+            <div class="pin-dot"></div><div class="pin-dot"></div>
+            <div class="pin-dot"></div><div class="pin-dot"></div>
+          </div>
+          <div class="pin-msg" id="pin-msg"></div>
+        </div>
+
+        <div class="screen-state" id="st-menu">
+          <div class="menu-head">MAIN MENU</div>
+          <div class="menu-bal-line" id="menu-bal">Avl. Balance: --</div>
+          <div class="menu-grid">
+            <div class="menu-item" onclick="navWithdraw()"><i class="fas fa-money-bill-wave"></i><span>WITHDRAW</span></div>
+            <div class="menu-item" onclick="navBalance()"><i class="fas fa-wallet"></i><span>BALANCE</span></div>
+            <div class="menu-item" onclick="navFastCash()"><i class="fas fa-bolt"></i><span>FAST CASH</span></div>
+            <div class="menu-item" onclick="navStatement()"><i class="fas fa-receipt"></i><span>MINI STMT</span></div>
+            <div class="menu-item" onclick="navPinChange()"><i class="fas fa-key"></i><span>CHANGE PIN</span></div>
+            <div class="menu-item danger" onclick="navExit()"><i class="fas fa-sign-out-alt"></i><span>EXIT</span></div>
+          </div>
+        </div>
+
+        <div class="screen-state" id="st-withdraw">
+          <div class="amt-title">SELECT AMOUNT</div>
+          <div class="amt-grid" id="wd-grid">
+            <div class="amt-btn" data-v="500">500</div>
+            <div class="amt-btn" data-v="1000">1,000</div>
+            <div class="amt-btn" data-v="2000">2,000</div>
+            <div class="amt-btn" data-v="5000">5,000</div>
+            <div class="amt-btn" data-v="10000">10,000</div>
+            <div class="amt-btn" data-v="20000">20,000</div>
+            <div class="amt-btn" data-v="50000">50,000</div>
+            <div class="amt-btn" data-v="100000">1,00,000</div>
+          </div>
+          <div class="custom-input-row">
+            <span class="rupee">&#8377;</span>
+            <input type="text" id="wd-custom" placeholder="Custom amount" maxlength="8" oninput="onCustomAmt()">
+          </div>
+          <div class="scr-btns">
+            <button class="scr-btn ghost" onclick="goMenu()">BACK</button>
+            <button class="scr-btn green" onclick="onWithdrawConfirm()">CONFIRM</button>
+          </div>
+        </div>
+
+        <div class="screen-state" id="st-fastcash">
+          <div class="amt-title">FAST CASH</div>
+          <div class="amt-grid" id="fc-grid">
+            <div class="amt-btn" data-v="1000">1,000</div>
+            <div class="amt-btn" data-v="2000">2,000</div>
+            <div class="amt-btn" data-v="3000">3,000</div>
+            <div class="amt-btn" data-v="5000">5,000</div>
+            <div class="amt-btn" data-v="10000">10,000</div>
+            <div class="amt-btn" data-v="15000">15,000</div>
+          </div>
+          <div class="scr-btns" style="margin-top:8px;">
+            <button class="scr-btn ghost" onclick="goMenu()">BACK</button>
+          </div>
+        </div>
+
+        <div class="screen-state" id="st-confirm">
+          <div class="cfm-icon"><i class="fas fa-hand-holding-usd"></i></div>
+          <div class="cfm-amount" id="cfm-amt">--</div>
+          <div class="cfm-label">WITHDRAWAL AMOUNT</div>
+          <div class="cfm-table">
+            <div class="cfm-row"><span class="k">Account</span><span class="v">**** **** 4521</span></div>
+            <div class="cfm-row"><span class="k">Type</span><span class="v">Savings</span></div>
+            <div class="cfm-row"><span class="k">Available</span><span class="v" id="cfm-bal">--</span></div>
+            <div class="cfm-row"><span class="k">After Txn</span><span class="v" id="cfm-after">--</span></div>
+          </div>
+          <div class="scr-btns">
+            <button class="scr-btn ghost" onclick="navWithdraw()">CANCEL</button>
+            <button class="scr-btn green" onclick="doProcess()">PROCEED</button>
+          </div>
+        </div>
+
+        <div class="screen-state" id="st-processing">
+          <div class="proc-ring"></div>
+          <div class="proc-text">Processing request...</div>
+        </div>
+
+        <div class="screen-state" id="st-success">
+          <div class="suc-icon"><i class="fas fa-check-circle"></i></div>
+          <div class="suc-title">TRANSACTION SUCCESSFUL</div>
+          <div class="suc-amount" id="suc-amt">--</div>
+          <div class="suc-notes" id="suc-notes"></div>
+          <div class="suc-hint">Please collect your cash</div>
+          <div class="scr-btns">
+            <button class="scr-btn green" onclick="goMenu()">ANOTHER TXN</button>
+            <button class="scr-btn ghost" onclick="navExit()">EXIT</button>
+          </div>
+        </div>
+
+        <div class="screen-state" id="st-balance">
+          <div class="bal-icon"><i class="fas fa-piggy-bank"></i></div>
+          <div class="bal-label">AVAILABLE BALANCE</div>
+          <div class="bal-value" id="bal-val">--</div>
+          <div class="bal-acct">A/C: **** **** 4521 (Savings)</div>
+          <div class="scr-btns">
+            <button class="scr-btn ghost" onclick="goMenu()">BACK</button>
+          </div>
+        </div>
+
+        <div class="screen-state" id="st-statement">
+          <div class="stmt-head">MINI STATEMENT</div>
+          <div class="stmt-list" id="stmt-list"></div>
+          <div class="scr-btns" style="margin-top:10px;">
+            <button class="scr-btn ghost" onclick="goMenu()">BACK</button>
+          </div>
+        </div>
+
+        <div class="screen-state" id="st-pinchange">
+          <div class="pin-title" id="pc-title">ENTER NEW PIN</div>
+          <div class="pin-dots" id="pc-dots">
+            <div class="pin-dot"></div><div class="pin-dot"></div>
+            <div class="pin-dot"></div><div class="pin-dot"></div>
+          </div>
+          <div class="pin-msg" id="pc-msg"></div>
+        </div>
+
+        <div class="screen-state" id="st-receipt">
+          <div id="rcpt-box"></div>
+          <div class="scr-btns" style="margin-top:12px;">
+            <button class="scr-btn ghost" onclick="goMenu()">ANOTHER TXN</button>
+            <button class="scr-btn green" onclick="navExit()">EXIT</button>
+          </div>
+        </div>
+
+        <div class="screen-state" id="st-exit">
+          <div class="exit-icon"><i class="fas fa-hand-peace"></i></div>
+          <div class="exit-title">THANK YOU</div>
+          <div class="exit-sub">Please take your card</div>
+          <div class="scr-btns">
+            <button class="scr-btn green" onclick="fullReset()">NEW TRANSACTION</button>
+          </div>
+        </div>
+
+        <div class="screen-state" id="st-error">
+          <div class="err-icon"><i class="fas fa-exclamation-triangle"></i></div>
+          <div class="err-text" id="err-text">Transaction Failed</div>
+          <div class="scr-btns" style="margin-top:14px;">
+            <button class="scr-btn ghost" onclick="goMenu()">BACK TO MENU</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="hardware-row">
+      <div class="card-reader">
+        <div class="card-reader-label">Card Reader</div>
+        <div class="card-slot" id="card-slot" onclick="onSlotClick()">
+          <div class="slot-inner">
+            <i class="fas fa-chevron-right slot-arrow"></i>
+            <span class="slot-text">INSERT CARD</span>
+            <i class="fas fa-chevron-right slot-arrow"></i>
+          </div>
+          <div class="bank-card" id="bank-card">
+            <div class="card-chip"></div>
+            <div class="card-stripes"><span></span><span></span><span></span></div>
+            <div class="card-brand">NEXUS</div>
+          </div>
+        </div>
+      </div>
+      <button class="insert-card-btn" id="insert-btn" onclick="insertCard()">
+        <i class="fas fa-credit-card"></i>
+        <span>INSERT CARD</span>
+      </button>
+    </div>
+
+    <div class="cash-dispenser-area">
+      <div class="dispenser-label">Cash Dispenser</div>
+      <div class="dispenser-slot" id="dispenser-slot" style="position:relative;">
+        <div class="cash-out-area" id="cash-out-area"></div>
+      </div>
+    </div>
+
+    <div class="keypad-area">
+      <div class="keypad-grid">
+        <div class="key" onclick="kp('1')">1</div>
+        <div class="key" onclick="kp('2')">2</div>
+        <div class="key" onclick="kp('3')">3</div>
+        <div class="key" onclick="kp('4')">4</div>
+        <div class="key" onclick="kp('5')">5</div>
+        <div class="key" onclick="kp('6')">6</div>
+        <div class="key" onclick="kp('7')">7</div>
+        <div class="key" onclick="kp('8')">8</div>
+        <div class="key" onclick="kp('9')">9</div>
+        <div class="key key-clear" onclick="kp('clear')">CLEAR</div>
+        <div class="key" onclick="kp('0')">0</div>
+        <div class="key key-enter" onclick="kp('enter')">ENTER</div>
+      </div>
+      <div class="side-keys">
+        <div class="side-key" onclick="kp('cancel')"><i class="fas fa-times" style="font-size:9px;"></i> CANCEL</div>
+        <div class="side-key" onclick="kp('back')"><i class="fas fa-backspace" style="font-size:9px;"></i> BACK</div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<script>
+  /* ==================== STATE ==================== */
+  var balance = 10000000;
+  var pin = '1234';
+  var pinBuf = '';
+  var selAmt = 0;
+  var state = 'welcome';
+  var tries = 0;
+  var pcBuf = '';
+  var pcStep = 0;
+  var pcTemp = '';
+  var cardInserted = false;
+  var readTimer = null;
+
+  var txns = [
+    { t:'Credit', a:500000, d:'15/01/2025', desc:'Salary' },
+    { t:'Debit', a:12000, d:'14/01/2025', desc:'ATM Withdrawal' },
+    { t:'Debit', a:3500, d:'12/01/2025', desc:'UPI Transfer' },
+    { t:'Credit', a:25000, d:'10/01/2025', desc:'NEFT Credit' },
+    { t:'Debit', a:899, d:'09/01/2025', desc:'Online Purchase' },
+    { t:'Debit', a:5000, d:'07/01/2025', desc:'ATM Withdrawal' },
+    { t:'Credit', a:10000, d:'05/01/2025', desc:'IMPS Credit' },
+    { t:'Debit', a:2200, d:'03/01/2025', desc:'Bill Payment' }
+  ];
+
+  /* ==================== HELPERS ==================== */
+  function fmt(n) { return '\u20B9' + Math.abs(n).toLocaleString('en-IN'); }
+  function $(id) { return document.getElementById(id); }
+
+  function go(id) {
+    document.querySelectorAll('.screen-state').forEach(function(s) { s.classList.remove('active'); });
+    var el = $('st-' + id);
+    if (el) { el.classList.add('active'); state = id; }
+  }
+
+  /* ==================== CARD INSERTION ==================== */
+  function onSlotClick() {
+    if (!cardInserted) insertCard();
+  }
+
+  function insertCard() {
+    if (cardInserted) return;
+    cardInserted = true;
+
+    /* Hide button using visibility (not display:none) */
+    $('insert-btn').classList.add('hidden');
+    $('card-slot').classList.add('has-card');
+
+    /* Slide card in */
+    setTimeout(function() { $('bank-card').classList.add('inserted'); }, 50);
+
+    /* Show reading screen */
+    go('reading');
+
+    /* Fill the progress bar with animation */
+    var bar = $('read-bar');
+    bar.classList.remove('instant');
+    bar.classList.add('filling');
+    bar.style.width = '0%';
+    setTimeout(function() { bar.style.width = '100%'; }, 50);
+
+    /* After reading, go to PIN */
+    if (readTimer) clearTimeout(readTimer);
+    readTimer = setTimeout(function() {
+      /* Instantly reset bar (no transition back) */
+      bar.classList.remove('filling');
+      bar.classList.add('instant');
+      bar.style.width = '0%';
+
+      go('pin');
+      pinBuf = '';
+      syncPinDots();
+      $('pin-msg').textContent = '';
+      $('pin-msg').className = 'pin-msg';
+    }, 1500);
+  }
+
+  function ejectCard() {
+    if (!cardInserted) return; /* Guard: only eject if actually inserted */
+    cardInserted = false;
+
+    $('bank-card').classList.remove('inserted');
+    $('bank-card').classList.add('ejected');
+    $('card-slot').classList.remove('has-card');
+
+    /* Show button using visibility */
+    $('insert-btn').classList.remove('hidden');
+
+    /* Clean up ejected class after animation finishes */
+    setTimeout(function() { $('bank-card').classList.remove('ejected'); }, 1000);
+  }
+
+  /* ==================== PIN ==================== */
+  function syncPinDots() {
+    document.querySelectorAll('#pin-dots .pin-dot').forEach(function(d, i) {
+      d.classList.toggle('filled', i < pinBuf.length);
+    });
+  }
+
+  function syncPcDots() {
+    document.querySelectorAll('#pc-dots .pin-dot').forEach(function(d, i) {
+      d.classList.toggle('filled', i < pcBuf.length);
+    });
+  }
+
+  function handlePin(k) {
+    var msg = $('pin-msg');
+    if (k === 'clear') { pinBuf = ''; syncPinDots(); msg.textContent = ''; msg.className = 'pin-msg'; return; }
+    if (k === 'back') { pinBuf = pinBuf.slice(0, -1); syncPinDots(); return; }
+    if (k === 'cancel') { navExit(); return; }
+    if (k === 'enter') { checkPin(); return; }
+    if (pinBuf.length < 4) { pinBuf += k; syncPinDots(); }
+    if (pinBuf.length === 4) setTimeout(checkPin, 250);
+  }
+
+  function checkPin() {
+    if (state !== 'pin' || pinBuf.length !== 4) return;
+    var msg = $('pin-msg');
+    if (pinBuf === pin) {
+      tries = 0;
+      msg.textContent = 'Correct';
+      msg.className = 'pin-msg success';
+      setTimeout(goMenu, 400);
+    } else {
+      tries++;
+      if (tries >= 3) {
+        msg.textContent = 'Card blocked!';
+        msg.className = 'pin-msg error';
+        setTimeout(navExit, 2000);
+      } else {
+        msg.textContent = 'Wrong PIN. ' + (3 - tries) + ' left.';
+        msg.className = 'pin-msg error';
+        pinBuf = '';
+        syncPinDots();
+      }
+    }
+  }
+
+  /* ==================== PIN CHANGE ==================== */
+  function handlePc(k) {
+    var msg = $('pc-msg');
+    if (k === 'clear') { pcBuf = ''; syncPcDots(); msg.textContent = ''; return; }
+    if (k === 'back') { pcBuf = pcBuf.slice(0, -1); syncPcDots(); return; }
+    if (k === 'cancel') { goMenu(); return; }
+    if (k === 'enter') { verifyPc(); return; }
+    if (pcBuf.length < 4) { pcBuf += k; syncPcDots(); }
+    if (pcBuf.length === 4 && pcStep === 1) setTimeout(verifyPc, 250);
+  }
+
+  function verifyPc() {
+    if (state !== 'pinchange' || pcBuf.length !== 4) return;
+    var msg = $('pc-msg');
+    if (pcStep === 0) {
+      pcTemp = pcBuf; pcBuf = ''; syncPcDots();
+      pcStep = 1;
+      $('pc-title').textContent = 'CONFIRM NEW PIN';
+      msg.textContent = '';
+    } else {
+      if (pcBuf === pcTemp) {
+        pin = pcBuf;
+        msg.textContent = 'PIN changed!';
+        msg.style.color = 'var(--screen-green)';
+        setTimeout(function() { resetPcState(); goMenu(); }, 1200);
+      } else {
+        msg.textContent = 'PINs do not match';
+        msg.style.color = 'var(--accent-red)';
+        resetPcState();
+      }
+    }
+  }
+
+  function resetPcState() {
+    pcBuf = ''; pcTemp = ''; pcStep = 0;
+    syncPcDots();
+    $('pc-title').textContent = 'ENTER NEW PIN';
+    $('pc-msg').textContent = '';
+    $('pc-msg').style.color = '';
+  }
+
+  /* ==================== NAVIGATION ==================== */
+  function goMenu() {
+    $('menu-bal').textContent = 'Avl. Balance: ' + fmt(balance);
+    go('menu');
+  }
+
+  function navWithdraw() {
+    selAmt = 0;
+    document.querySelectorAll('#wd-grid .amt-btn').forEach(function(b) { b.classList.remove('picked'); });
+    $('wd-custom').value = '';
+    go('withdraw');
+  }
+
+  function navFastCash() {
+    selAmt = 0;
+    document.querySelectorAll('#fc-grid .amt-btn').forEach(function(b) { b.classList.remove('picked'); });
+    go('fastcash');
+  }
+
+  function navBalance() {
+    $('bal-val').textContent = fmt(balance);
+    go('balance');
+  }
+
+  function navStatement() {
+    var list = $('stmt-list');
+    list.innerHTML = '';
+    txns.slice(0, 10).forEach(function(tx) {
+      var r = document.createElement('div');
+      r.className = 'stmt-row';
+      var isCr = tx.t === 'Credit';
+      r.innerHTML =
+        '<div><div class="s-desc">' + tx.desc + '</div><div class="s-date">' + tx.d + '</div></div>' +
+        '<div style="display:flex;align-items:center;">' +
+        '<span class="s-amt ' + (isCr ? 'cr' : '') + '">' + fmt(tx.a) + '</span>' +
+        '<span class="s-tag ' + (isCr ? 'cr-tag' : 'dr') + '">' + (isCr ? 'CR' : 'DR') + '</span>' +
+        '</div>';
+      list.appendChild(r);
+    });
+    go('statement');
+  }
+
+  function navPinChange() { resetPcState(); go('pinchange'); }
+
+  function navExit() {
+    ejectCard();
+    go('exit');
+  }
+
+  function fullReset() {
+    pinBuf = ''; selAmt = 0; tries = 0;
+    syncPinDots();
+    if (cardInserted) ejectCard();
+    go('welcome');
+  }
+
+  /* ==================== AMOUNT ==================== */
+  document.querySelectorAll('#wd-grid .amt-btn').forEach(function(b) {
+    b.addEventListener('click', function() {
+      document.querySelectorAll('#wd-grid .amt-btn').forEach(function(x) { x.classList.remove('picked'); });
+      b.classList.add('picked');
+      selAmt = parseInt(b.dataset.v);
+      $('wd-custom').value = '';
+    });
+  });
+
+  document.querySelectorAll('#fc-grid .amt-btn').forEach(function(b) {
+    b.addEventListener('click', function() {
+      selAmt = parseInt(b.dataset.v);
+      showConfirmScreen();
+    });
+  });
+
+  function onCustomAmt() {
+    var v = $('wd-custom').value.replace(/[^0-9]/g, '');
+    $('wd-custom').value = v;
+    document.querySelectorAll('#wd-grid .amt-btn').forEach(function(b) { b.classList.remove('picked'); });
+    selAmt = parseInt(v) || 0;
+  }
+
+  function onWithdrawConfirm() {
+    if (selAmt <= 0) { showError('Please select or enter an amount'); return; }
+    if (selAmt % 100 !== 0) { showError('Amount must be in multiples of 100'); return; }
+    if (selAmt > balance) { showError('Insufficient balance'); return; }
+    showConfirmScreen();
+  }
+
+  function showConfirmScreen() {
+    if (selAmt > balance) { showError('Insufficient balance'); return; }
+    $('cfm-amt').textContent = fmt(selAmt);
+    $('cfm-bal').textContent = fmt(balance);
+    $('cfm-after').textContent = fmt(balance - selAmt);
+    go('confirm');
+  }
+
+  function showError(m) { $('err-text').textContent = m; go('error'); }
+
+  /* ==================== PROCESS ==================== */
+  function doProcess() {
+    go('processing');
+    setTimeout(function() {
+      balance -= selAmt;
+      var now = new Date();
+      var ds = String(now.getDate()).padStart(2,'0') + '/' + String(now.getMonth()+1).padStart(2,'0') + '/' + now.getFullYear();
+      txns.unshift({ t:'Debit', a: selAmt, d: ds, desc: 'ATM Withdrawal' });
+
+      $('suc-amt').textContent = fmt(selAmt);
+      //renderCashNotes();
+	  //setTimeout(function() { renderCashNotes(); go('success'); }, 3000)
+      go('success');
+
+      setTimeout(function() { renderReceipt(selAmt); go('receipt'); }, 4500);
+    }, 2500);
+  }
+
+  /* ==================== CASH NOTES ==================== */
+  var noteColors = { 2000:'note-2000', 500:'note-500', 200:'note-200', 100:'note-100', 50:'note-50' };
+
+  function calcNotes(amt) {
+    var r = {};
+    [2000,500,200,100,50].forEach(function(d) { if (amt >= d) { r[d] = Math.floor(amt/d); amt %= d; } });
+    return r;
+  }
+
+  function renderCashNotes() {
+    var box = $('cash-out-area');
+    box.innerHTML = '';
+    var notes = calcNotes(selAmt);
+    var delay = 0;
+    [2000,500,200,100,50].forEach(function(d) {
+      if (!notes[d]) return;
+      var show = Math.min(notes[d], 3);
+      for (var i = 0; i < show; i++) {
+        var n = document.createElement('div');
+        n.className = 'cash-note ' + noteColors[d] + ' dispensing';
+        n.textContent = '\u20B9' + d;
+        n.style.animationDelay = (delay * 0.12) + 's';
+        box.appendChild(n);
+        delay++;
+      }
+      if (notes[d] > 3) {
+        var ex = document.createElement('div');
+        ex.style.cssText = 'color:rgba(255,255,255,0.25);font-size:9px;opacity:0;animation:note-dispense 0.5s ease-out ' + (delay*0.12) + 's forwards;';
+        ex.textContent = '+' + (notes[d]-3) + ' more \u20B9' + d;
+        box.appendChild(ex);
+        delay++;
+      }
+    });
+  }
+
+  /* ==================== RECEIPT ==================== */
+  function renderReceipt(amt) {
+    var now = new Date();
+    var ts = [now.getHours(), now.getMinutes(), now.getSeconds()].map(function(v) { return String(v).padStart(2,'0'); }).join(':');
+    var ds = [now.getDate(), now.getMonth()+1, now.getFullYear()].map(function(v) { return String(v).padStart(2,'0'); }).join('/');
+    var tid = 'NXB' + Date.now().toString().slice(-8);
+
+    $('rcpt-box').innerHTML =
+      '<div class="receipt">' +
+        '<div class="rcpt-head"><div class="rn">NEXUS BANK</div><div class="rb">ATM - Connaught Place, New Delhi</div></div>' +
+        '<div class="rcpt-row"><span class="rl">Date</span><span class="rv">' + ds + '</span></div>' +
+        '<div class="rcpt-row"><span class="rl">Time</span><span class="rv">' + ts + '</span></div>' +
+        '<div class="rcpt-row"><span class="rl">Txn ID</span><span class="rv">' + tid + '</span></div>' +
+        '<div class="rcpt-row"><span class="rl">Card</span><span class="rv">**** **** **** 4521</span></div>' +
+        '<div class="rcpt-row"><span class="rl">Type</span><span class="rv">Cash Withdrawal</span></div>' +
+        '<hr class="rcpt-hr">' +
+        '<div class="rcpt-row rcpt-total"><span class="rl">Amount</span><span class="rv">' + fmt(amt) + '</span></div>' +
+        '<hr class="rcpt-hr">' +
+        '<div class="rcpt-row"><span class="rl">Avl. Balance</span><span class="rv">' + fmt(balance) + '</span></div>' +
+        '<div class="rcpt-foot">Computer generated receipt.<br>Does not require signature.<br><strong>Thank you for banking with us!</strong></div>' +
+      '</div>';
+  }
+
+  /* ==================== KEYPAD ROUTER ==================== */
+  function kp(k) {
+    if (state === 'pin') { handlePin(k); return; }
+    if (state === 'pinchange') { handlePc(k); return; }
+    if (k === 'cancel') {
+      if (['welcome','exit','processing','reading'].indexOf(state) === -1) navExit();
+      return;
+    }
+    if (k === 'back') {
+      if (['withdraw','fastcash','balance','statement','pinchange'].indexOf(state) !== -1) goMenu();
+      else if (state === 'confirm') navWithdraw();
+      return;
+    }
+    if (k === 'enter' && state === 'withdraw') { onWithdrawConfirm(); return; }
+    if (state === 'withdraw' && !isNaN(k)) {
+      var inp = $('wd-custom');
+      if (inp.value.length < 8) { inp.value += k; onCustomAmt(); }
+    }
+  }
+
+  /* ==================== KEYBOARD ==================== */
+  document.addEventListener('keydown', function(e) {
+    if (e.key >= '0' && e.key <= '9') kp(e.key);
+    else if (e.key === 'Enter') { e.preventDefault(); kp('enter'); }
+    else if (e.key === 'Escape') kp('cancel');
+    else if (e.key === 'Backspace') { e.preventDefault(); kp('back'); }
+    else if (e.key === 'Delete' || e.key === 'Clear') kp('clear');
+  });
+
+  /* ==================== PARTICLES ==================== */
+  (function() {
+    var c = $('particles');
+    for (var i = 0; i < 20; i++) {
+      var d = document.createElement('div');
+      d.className = 'dot';
+      var s = 1 + Math.random() * 2;
+      d.style.width = s + 'px';
+      d.style.height = s + 'px';
+      d.style.left = Math.random() * 100 + '%';
+      d.style.background = Math.random() > 0.6 ? 'rgba(240,192,64,0.1)' : 'rgba(0,255,136,0.12)';
+      d.style.animationDuration = (10 + Math.random() * 14) + 's';
+      d.style.animationDelay = (Math.random() * 12) + 's';
+      c.appendChild(d);
+    }
+  })();
+</script>
+</body>
+</html>
